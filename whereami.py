@@ -43,12 +43,6 @@ from bs4 import BeautifulSoup
 # PLATFORM DATABASE — 100+ Sites to Check
 # ──────────────────────────────────────────────────────────────────────
 
-# Each entry defines HOW to check if an email/phone is registered
-# Methods: "email_check" = POST email, check response
-#          "reset_check" = trigger password reset, check error message
-#          "signup_check" = try signup, check "already taken" error
-#          "api_check" = use public API endpoint
-
 PLATFORMS = [
     # ── SOCIAL MEDIA ──
     {"name": "Facebook", "type": "social", "check_url": "https://www.facebook.com/api/graphql/",
@@ -150,7 +144,7 @@ PLATFORMS = [
     {"name": "Google Drive", "type": "cloud", "check_url": "https://accounts.google.com/signup/v2/lookup",
      "method": "email_check", "field": "email", "indicator": "already"},
     {"name": "Microsoft 365", "type": "cloud", "check_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
-     "method": "email_check", "field": "login_hint", "indicator": "account"},
+     "method": "email_check", "field": "email", "indicator": "account"},
     {"name": "Notion", "type": "cloud", "check_url": "https://www.notion.so/api/v3/getUser",
      "method": "email_check", "field": "email", "indicator": "found"},
     {"name": "Trello", "type": "cloud", "check_url": "https://trello.com/1/email/check",
@@ -297,7 +291,7 @@ class DigitalFootprintScanner:
                     pass
             print(f"  [HOLEHE] Found on {holehe_found} additional platforms\n")
         except ImportError:
-            print("  [HOLEHE] Not installed (optional, install: pip install holehe)\n")
+            print("  [HOLEHE] Not installed (install: pip install holehe)\n")
         
         # Check all platforms in parallel
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -314,7 +308,7 @@ class DigitalFootprintScanner:
                     result = future.result(timeout=10)
                     if result.get("registered") == True:
                         results["found"].append({"platform": platform["name"], "type": platform["type"], "method": "direct_check"})
-                        print(f"  ✅ [{platform['type']:12s}] {platform['name']}")
+                        print(f"  [+] [{platform['type']:12s}] {platform['name']}")
                     elif result.get("registered") == False:
                         results["not_found"].append(platform["name"])
                     else:
@@ -327,13 +321,13 @@ class DigitalFootprintScanner:
                     print(f"  ... {completed}/{len(PLATFORMS)} platforms checked")
         
         print(f"\n{'─'*60}")
-        print(f"  ✅ Scan complete! {len(results['found'])} platforms found")
+        print(f"  Scan complete! {len(results['found'])} platforms found")
         print(f"{'─'*60}")
         
         return results
     
     def scan_phone(self, phone):
-        """Scan for phone number — checks subset of platforms that support phone."""
+        """Scan for phone number."""
         phone = self.normalize_phone(phone)
         normalized = re.sub(r'[\s\-\+\(\)\.]', '', phone)
         
@@ -369,10 +363,9 @@ class DigitalFootprintScanner:
         for p in phone_platforms:
             try:
                 r = self.session.get(p["url"], timeout=5, allow_redirects=True)
-                # Any response that isn't a clear 404/error suggests existence
                 if r.status_code != 404 and r.status_code != 410:
                     results["found"].append({"platform": p["name"], "type": p["type"], "url": p["url"]})
-                    print(f"  ✅ [{p['type']:12s}] {p['name']} — {p['url']}")
+                    print(f"  [+] [{p['type']:12s}] {p['name']} — {p['url']}")
                 else:
                     results["not_found"].append(p["name"])
             except:
@@ -381,11 +374,11 @@ class DigitalFootprintScanner:
         # Also run the standard platform checks (many support both email and phone)
         print(f"\n  Also checking {len(PLATFORMS)} standard platforms with phone...\n")
         
-        phone_identifier = normalized  # Many platforms accept just digits
+        phone_identifier = normalized
         with ThreadPoolExecutor(max_workers=3) as executor:
             futures = {
                 executor.submit(self.check_platform, p, phone_identifier, "phone"): p
-                for p in PLATFORMS[:20]  # Check first 20 for phone
+                for p in PLATFORMS[:20]
             }
             
             for future in as_completed(futures):
@@ -394,12 +387,12 @@ class DigitalFootprintScanner:
                     result = future.result(timeout=8)
                     if result.get("registered") == True:
                         results["found"].append({"platform": platform["name"], "type": platform["type"]})
-                        print(f"  ✅ [{platform['type']:12s}] {platform['name']}")
+                        print(f"  [+] [{platform['type']:12s}] {platform['name']}")
                 except:
                     pass
         
         print(f"\n{'─'*60}")
-        print(f"  ✅ Scan complete! {len(results['found'])} platforms found")
+        print(f"  Scan complete! {len(results['found'])} platforms found")
         print(f"{'─'*60}")
         
         return results
@@ -412,14 +405,11 @@ class DigitalFootprintScanner:
         
         found = results["found"]
         
-        print(f"\n{'╔' + '═'*58 + '╗'}")
-        print(f"║{' ':^58}║")
-        print(f"║{'COMPLETE DIGITAL FOOTPRINT REPORT':^58}║")
-        print(f"║{' ':^58}║")
-        print(f"║  Target: {results['identifier']:<42s}║")
-        print(f"║  Type:   {results['type']:<42s}║")
-        print(f"║{' ':^58}║")
-        print(f"╚{'═'*58 + '╝'}")
+        print(f"\n{'='*60}")
+        print(f"  COMPLETE DIGITAL FOOTPRINT REPORT")
+        print(f"  Target: {results['identifier']}")
+        print(f"  Type:   {results['type']}")
+        print(f"{'='*60}")
         
         # Organize by category
         categories = {}
@@ -449,103 +439,78 @@ class DigitalFootprintScanner:
         for cat, label in category_labels.items():
             items = categories.get(cat, [])
             if items:
-                print(f"\n  ┌─ {label} ({len(items)})")
-                print(f"  │")
+                print(f"\n  --- {label} ({len(items)}) ---")
                 for item in items:
                     name = item["platform"]
                     if item.get("url"):
-                        print(f"  ├─ {name:<35s} → {item['url']}")
+                        print(f"    -> {name}: {item['url']}")
                     else:
-                        print(f"  ├─ {name}")
-                print(f"  └─")
+                        print(f"    -> {name}")
         
         # Summary
-        print(f"\n{'═'*60}")
-        print(f"  📊 SUMMARY")
+        print(f"\n{'='*60}")
+        print(f"  SUMMARY")
         print(f"  {'─'*56}")
         print(f"  Total platforms found:     {len(found)}")
-        print(f"  Total platforms checked:   {len(PLATFORMS) + 120} (with holehe)")
         
         # Category breakdown
-        print(f"\n  {'─'*56}")
-        print(f"  BREAKDOWN BY CATEGORY:")
         for cat, label in category_labels.items():
             count = len(categories.get(cat, []))
             if count > 0:
                 print(f"    {label:<30s} {count}")
         
-        print(f"\n{'═'*60}\n")
+        print(f"{'='*60}\n")
 
 
 # ──────────────────────────────────────────────────────────────────────
 # MAIN INTERACTIVE LOOP
 # ──────────────────────────────────────────────────────────────────────
 
-class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    END = '\033[0m'
-
-def c(text, color):
-    try:
-        return f"{color}{text}{Colors.END}"
-    except:
-        return text
-
 def clear():
     os.system('clear' if os.name == 'posix' else 'cls')
 
 def print_banner():
     clear()
-    banner = f"""
-{c(Colors.CYAN)}{c(Colors.BOLD)}
-  ╔══════════════════════════════════════════════════════════════════════╗
-  ║                                                                      ║
-  ║     ██╗    ██╗██╗  ██╗███████╗██████╗  █████╗ ███╗   ███╗           ║
-  ║     ██║    ██║██║  ██║██╔════╝██╔══██╗██╔══██╗████╗ ████║           ║
-  ║     ██║ █╗ ██║███████║█████╗  ██████╔╝███████║██╔████╔██║           ║
-  ║     ██║███╗██║╚════██║██╔══╝  ██╔══██╗██╔══██║██║╚██╔╝██║           ║
-  ║     ╚███╔███╔╝     ██║███████╗██║  ██║██║  ██║██║ ╚═╝ ██║           ║
-  ║      ╚══╝╚══╝      ╚═╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝           ║
-  ║                                                                      ║
-  ║            {c(Colors.YELLOW)}DIGITAL FOOTPRINT SCANNER v4.0{c(Colors.CYAN)}                   ║
-  ║     Find EVERY website and app your identity is registered on        ║
-  ║                                                                      ║
-  ╚══════════════════════════════════════════════════════════════════════╝{c(Colors.END)}
+    print("""
+  ============================================================
+  |                                                          |
+  |     WHERE AM I? -- DIGITAL FOOTPRINT SCANNER v4.0        |
+  |                                                          |
+  |     Find EVERY website and app your identity is          |
+  |     registered on worldwide                              |
+  |                                                          |
+  |     Coverage: 100+ direct checks + 120+ via holehe       |
+  |     = 220+ total platforms                               |
+  |                                                          |
+  ============================================================
 
-  {c(Colors.GREEN)}Coverage: 100+ direct platform checks + 120+ via holehe = 220+ total{c(Colors.END)}
-  {c(Colors.YELLOW)}Authorized use only. Scan your own assets first.{c(Colors.END)}
-"""
-    print(banner)
+  Authorized use only. Scan your own assets first.
+""")
 
 def main():
     print_banner()
     scanner = DigitalFootprintScanner()
     
     while True:
-        print(f"\n  {c(Colors.BOLD)}MAIN MENU{c(Colors.END)}")
-        print(f"  {'─'*56}")
-        print(f"  {c(Colors.GREEN)}[1]{c(Colors.END)} Scan Email Address")
-        print(f"  {c(Colors.GREEN)}[2]{c(Colors.END)} Scan Phone Number")
-        print(f"  {c(Colors.GREEN)}[3]{c(Colors.END)} View Platform List ({len(PLATFORMS)} platforms)")
-        print(f"  {c(Colors.GREEN)}[0]{c(Colors.END)} Exit")
-        print(f"  {'─'*56}")
+        print("")
+        print("  MAIN MENU")
+        print("  " + "-"*40)
+        print("  [1] Scan Email Address")
+        print("  [2] Scan Phone Number")
+        print("  [3] View Platform List (" + str(len(PLATFORMS)) + " platforms)")
+        print("  [0] Exit")
+        print("  " + "-"*40)
         
-        choice = input(f"\n  {c(Colors.GREEN)}Select option:{c(Colors.END)} ").strip()
+        choice = input("\n  Select option: ").strip()
         
         if choice == "1":
-            print_banner()
-            print(f"\n  {c(Colors.CYAN)}Enter the email address to scan:{c(Colors.END)}")
-            email = input(f"  {c(Colors.GREEN)}→ {c(Colors.END)}").strip()
+            clear()
+            print("\n  Enter the email address to scan:")
+            email = input("  -> ").strip()
             
             if not email or "@" not in email:
-                print(f"\n  {c(Colors.RED)}❌ Invalid email.{c(Colors.END)}")
-                input(f"\n  Press Enter...")
+                print("\n  Invalid email.")
+                input("\n  Press Enter...")
                 continue
             
             results = scanner.scan_email(email)
@@ -556,20 +521,20 @@ def main():
             filename = f"footprint_{safe}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             with open(filename, 'w') as f:
                 json.dump(results, f, indent=2, default=str)
-            print(f"\n  {c(Colors.GREEN)}💾 Full report saved: {filename}{c(Colors.END)}")
+            print(f"\n  Full report saved: {filename}")
             
-            input(f"\n  Press Enter to continue...")
+            input("\n  Press Enter to continue...")
             print_banner()
         
         elif choice == "2":
-            print_banner()
-            print(f"\n  {c(Colors.CYAN)}Enter the phone number to scan (include country code):{c(Colors.END)}")
-            print(f"  {c(Colors.YELLOW)}Examples: +14155551234, +917994452892, +447700900000{c(Colors.END)}")
-            phone = input(f"  {c(Colors.GREEN)}→ {c(Colors.END)}").strip()
+            clear()
+            print("\n  Enter the phone number to scan (include country code):")
+            print("  Examples: +14155551234, +917994452892, +447700900000")
+            phone = input("  -> ").strip()
             
             if not phone:
-                print(f"\n  {c(Colors.RED)}❌ Invalid phone.{c(Colors.END)}")
-                input(f"\n  Press Enter...")
+                print("\n  Invalid phone.")
+                input("\n  Press Enter...")
                 continue
             
             results = scanner.scan_phone(phone)
@@ -580,15 +545,14 @@ def main():
                 filename = f"footprint_{safe}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
                 with open(filename, 'w') as f:
                     json.dump(results, f, indent=2, default=str)
-                print(f"\n  {c(Colors.GREEN)}💾 Full report saved: {filename}{c(Colors.END)}")
+                print(f"\n  Full report saved: {filename}")
             
-            input(f"\n  Press Enter to continue...")
+            input("\n  Press Enter to continue...")
             print_banner()
         
         elif choice == "3":
-            print_banner()
-            print(f"\n  {c(Colors.BOLD)}PLATFORM CHECKLIST ({len(PLATFORMS)} platforms){c(Colors.END)}")
-            print(f"  {'─'*56}\n")
+            clear()
+            print(f"\n  PLATFORM CHECKLIST ({len(PLATFORMS)} platforms)\n")
             
             categories = {}
             for p in PLATFORMS:
@@ -609,23 +573,23 @@ def main():
             for cat, label in cat_names.items():
                 items = categories.get(cat, [])
                 if items:
-                    print(f"  {c(Colors.CYAN)}{label} ({len(items)}):{c(Colors.END)}")
+                    print(f"  {label} ({len(items)}):")
                     for i, name in enumerate(items, 1):
                         print(f"    {i:2d}. {name}")
                     print()
             
-            print(f"  Plus 120+ additional platforms via holehe extension")
-            print(f"  Total: ~220 platforms checked")
+            print("  Plus 120+ additional platforms via holehe extension")
+            print("  Total: ~220 platforms checked")
             
-            input(f"\n  Press Enter to continue...")
+            input("\n  Press Enter to continue...")
             print_banner()
         
         elif choice == "0":
-            print(f"\n  {c(Colors.GREEN)}Exiting. Stay safe.{c(Colors.END)}\n")
+            print("\n  Exiting. Stay safe.\n")
             break
         
         else:
-            print(f"\n  {c(Colors.RED)}Invalid option.{c(Colors.END)}")
+            print("\n  Invalid option.")
             time.sleep(1)
 
 
@@ -633,5 +597,5 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print(f"\n\n  Interrupted. Exiting.\n")
+        print("\n\n  Interrupted. Exiting.\n")
         sys.exit(0)
